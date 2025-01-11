@@ -1,0 +1,36 @@
+[submodule "src/gcc"]
+	path = src/gcc
+	url = https://github.com/Masmiseim36/gcc.git
+[submodule "src/binutils-gdb"]
+	path = src/binutils-gdb
+	url = https://github.com/Masmiseim36/binutils-gdb.git
+[submodule "src/glibc"]
+	path = src/glibc
+	url = git://sourceware.org/git/glibc.git
+[submodule "src/newlib-cygwin"]
+	path = src/newlib-cygwin
+	url = git://sourceware.org/git/newlib-cygwin.git
+[submodule "binutils-gdb--gdb"]
+	path = src/binutils-gdb--gdb
+	url = git://sourceware.org/git/binutils-gdb.git
+[submodule "src/gnu-devtools-for-arm"]
+	path = src/gnu-devtools-for-arm
+	url = https://git.gitlab.arm.com/tooling/gnu-devtools-for-arm.git
+[submodule "src/linux"]
+	path = src/linux
+	url = git://git.kernel.org/pub/scm/linux/kernel/git/stable/linux-stable.git
+[submodule "src/qemu"]
+	path = src/qemu
+	url = https://gitlab.com/qemu-project/qemu.git
+[submodule "src/isl"]
+	path = src/isl
+	url = https://repo.or.cz/isl.git
+[submodule "src/mpfr"]
+	path = src/mpfr
+	url = https://github.com/Masmiseim36/mpfr.git
+[submodule "src/libexpat"]
+	path = src/libexpat
+	url = https://github.com/libexpat/libexpat.git
+[submodule "src/zstd"]
+	path = src/zstd
+	url = https://github.com/facebook/zstd.git
