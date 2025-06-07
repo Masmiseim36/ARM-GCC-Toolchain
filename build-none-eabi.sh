@@ -1,0 +1,1 @@
+./build-gnu-toolchain.sh --target=arm-none-eabi --disable-gdb --disable-multilib
