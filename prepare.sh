@@ -9,15 +9,48 @@ packages="autoconf autogen automake \
 	  flex flip \
 	  g++-mingw-w64-i686 g++-mingw-w64-x86-64 g++ gawk gcc-mingw-w64-base gcc-mingw-w64-i686 gcc-mingw-w64-x86-64 gcc-mingw-w64 gcc-multilib gcc gdb gettext gfortran ghostscript git-core golang google-mock \
 	  keychain \
-	  less libbz2-dev libc-dev libc6-dev libelf-dev libglib2.0-dev libgmp-dev libgmp3-dev libisl-dev libltdl-dev libmpc-dev libmpfr-dev libncurses5-dev libpugixml-dev libreadline-dev libtool libx11-dev libxml2-utils linux-libc-dev \
-	  make mingw-w64-common mingw-w64-i686-dev mingw-w64-x86-64-dev \
-	  ninja-build nsis \
-	  perl php-cli pkg-config python3 python3-venv \
+	  less \
+	  libbz2-dev \
+	  libc-dev \
+	  libc6-dev \
+	  libelf-dev \
+	  libglib2.0-dev \
+	  libgmp-dev \
+	  libgmp3-dev \
+	  libisl-dev \
+	  libltdl-dev \
+	  libmpc-dev \
+	  libmpfr-dev \
+	  libncurses5-dev \
+	  libpugixml-dev \
+	  libreadline-dev \
+	  libtool \
+	  libx11-dev \
+	  libxml2-utils \
+	  linux-libc-dev \
+	  make \
+	  mingw-w64-common \
+	  mingw-w64-i686-dev \
+	  mingw-w64-x86-64-dev \
+	  ninja-build \
+	  nsis \
+	  perl \
+	  php-cli \
+	  pkg-config \
+	  python3 \
+	  python3-venv \
 	  libpixman-1-0 \
-	  qemu-system-arm qemu-user \
-	  ruby-nokogiri ruby rsync \
+	  qemu-system-arm \
+	  qemu-user \
+	  ruby-nokogiri \
+	  ruby rsync \
 	  scons shtool swig \
-	  tcl texinfo texlive-extra-utils texlive-full texlive time transfig \
+	  tcl \
+	  texinfo \
+	  texlive-extra-utils \
+	  texlive-full \
+	  texlive time \
+	  transfig \
 	  valgrind vim \
 	  wget \
 	  xsltproc \
@@ -37,12 +70,13 @@ if [[ $distribution = "Ubuntu" ]] ; then
 		  libncurses5-dev libreadline6-dev libsqlite3-dev libssl-dev \
 		  lzma lzma-dev tk-dev uuid-dev zlib1g-dev
 
-	sudo apt install python3-pip
-	sudo apt install pipx
-	pipx install tomli
+	sudo apt install -y python3-pip
+	sudo apt install -y pipx
+	pip install tomli
 
 
 	cd src
+
 	cd gmp
 	chmod +x -R ./
 	cd ..
@@ -55,6 +89,11 @@ if [[ $distribution = "Ubuntu" ]] ; then
 	chmod +x -R ./
 	cd ..
 
+	cd gcc
+#	chmod +x -R ./
+	./contrib/download_prerequisites --force --directory=..
+	cd ..
+	
 	cd gnu-devtools-for-arm
 	chmod +x -R ./
 	cd ..
