@@ -1,5 +1,5 @@
 /autom4te.cache/
-m4/
+/cmake-build-debug/
 CMakeFiles/
 Testing/
 aclocal.m4
@@ -34,5 +34,8 @@ expat.pc
 build__R*
 coverage__R*
 source__R*
-/expat-*.tar.bz2
+/expat-*.tar.*
 /stamp-h1
+/libexpat*.dll
+/changelog
+*~
