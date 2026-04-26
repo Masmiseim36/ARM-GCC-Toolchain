@@ -1,0 +1,353 @@
+#!/bin/bash
+# Build arm-none-eabi toolchains for Linux x64 and Windows x64 (MinGW) hosts.
+# Follows src/gnu-devtools-for-arm/README.md release / Mingw instructions.
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$ROOT"
+
+# Prefer Linux tools under WSL. Windows git.exe in PATH emits CRLF and breaks
+# configure/make (e.g. isl gitversion.h).
+if grep -qi microsoft /proc/version 2>/dev/null; then
+	PATH="$(printf '%s' "$PATH" | tr ':' '\n' | grep -v '^/mnt/' | paste -sd: -)"
+	export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin${PATH:+:$PATH}"
+fi
+
+TARGET="arm-none-eabi"
+DEVTOOLS="$ROOT/src/gnu-devtools-for-arm"
+BUILD_WRAPPER="$DEVTOOLS/build-gnu-toolchain.sh"
+NEWLIB_MINGW="$DEVTOOLS/build-newlib-for-mingw-toolchain.sh"
+
+LINUX_BUILDDIR="$ROOT/build-arm-none-eabi"
+MINGW_BUILDDIR="$ROOT/build-mingw-arm-none-eabi"
+MINGW_HOST="x86_64-w64-mingw32"
+LOGFILE="$ROOT/build.log"
+
+do_linux=1
+do_windows=1
+quick=0
+enable_log=1
+debug_flags=()
+stage="start"
+
+usage() {
+	cat <<EOF
+Usage: $(basename "$0") [OPTIONS] [STAGE]
+
+Build $TARGET binaries for:
+  - Linux x64 host  -> $LINUX_BUILDDIR
+  - Windows x64 host (MinGW) -> $MINGW_BUILDDIR
+
+By default all console output (this script and every invoked tool) is also
+written to: $LOGFILE
+
+Options:
+  --linux-only       Build only the Linux-hosted toolchain
+  --windows-only     Build only the Windows/MinGW-hosted toolchain
+                     (requires a completed Linux build under $LINUX_BUILDDIR)
+  --quick            Faster smoke build: single multilib, no full release set
+  --debug            Pass --debug --debug-target to the toolchain scripts
+  --no-log           Do not write output to $LOGFILE (console only)
+  -h, --help         Show this help
+
+STAGE defaults to "start" (full rebuild from the beginning).
+Any other stage name accepted by build-gnu-toolchain.sh may be passed
+(e.g. gcc2) as the final argument.
+
+Examples:
+  ./build.sh
+  ./build.sh --linux-only
+  ./build.sh --quick --linux-only
+  ./build.sh --windows-only
+  ./build.sh --no-log --windows-only
+EOF
+}
+
+# Mirror stdout/stderr to the console and to build.log for this process and children.
+setup_logging() {
+	: > "$LOGFILE"
+	exec > >(tee -a "$LOGFILE") 2>&1
+	echo "Logging to $LOGFILE (started $(date -Is))"
+}
+
+while [[ $# -gt 0 ]]; do
+	case "$1" in
+		--linux-only)
+			do_linux=1
+			do_windows=0
+			;;
+		--windows-only)
+			do_linux=0
+			do_windows=1
+			;;
+		--quick)
+			quick=1
+			;;
+		--debug)
+			debug_flags=(--debug --debug-target)
+			;;
+		--no-log)
+			enable_log=0
+			;;
+		-h|--help)
+			usage
+			exit 0
+			;;
+		--)
+			shift
+			break
+			;;
+		-*)
+			echo "error: unknown option: $1" >&2
+			usage >&2
+			exit 1
+			;;
+		*)
+			stage="$1"
+			shift
+			break
+			;;
+	esac
+	shift
+done
+
+if [[ $# -gt 0 ]]; then
+	echo "error: unexpected arguments: $*" >&2
+	exit 1
+fi
+
+if [[ $enable_log -eq 1 ]]; then
+	setup_logging
+else
+	echo "Logging to $LOGFILE disabled (--no-log)"
+fi
+require_file() {
+	if [[ ! -x $1 && ! -f $1 ]]; then
+		echo "error: missing required file: $1" >&2
+		exit 1
+	fi
+}
+
+require_dir() {
+	if [[ ! -d $1 ]]; then
+		echo "error: missing required directory: $1" >&2
+		exit 1
+	fi
+}
+
+require_file "$BUILD_WRAPPER"
+require_file "$NEWLIB_MINGW"
+require_dir "$ROOT/src/gcc"
+require_dir "$ROOT/src/binutils-gdb"
+require_dir "$ROOT/src/newlib-cygwin"
+require_dir "$ROOT/src/gmp"
+require_dir "$ROOT/src/mpfr"
+require_dir "$ROOT/src/mpc"
+require_dir "$ROOT/src/isl"
+require_dir "$ROOT/src/zstd"
+
+# Sources checked out on a Windows mount often have CRLF; strip so configure can run.
+# Skip on a native Linux filesystem (e.g. WSL $HOME): walking gcc/newlib with sed -i
+# stalls the build and dirties submodules. Executable bits are expected from git
+# (100755); do not call ensure-executables.sh here.
+fix_script_newlines() {
+	local d
+	if [[ $ROOT != /mnt/* ]]; then
+		return 0
+	fi
+	echo "Normalizing CRLF on Windows mount (host libraries + Arm wrappers only)..."
+
+	strip_cr_in_dir() {
+		local dir="$1"
+		[[ -d $dir ]] || return 0
+		find "$dir" \( -path '*/.git/*' -o -path '*/.git' \
+				-o -path '*/testsuite/*' -o -path '*/tests/*' \) -prune -o \
+			-type f \( \
+				-name '*.sh' -o -name '*.sub' -o -name '*.guess' \
+				-o -name '*.m4' -o -name '*.ac' -o -name '*.am' -o -name '*.in' \
+				-o -name configure -o -name 'config.*' -o -name 'm4-*' \
+				-o -name install-sh -o -name missing -o -name compile \
+				-o -name depcomp -o -name ltmain.sh -o -name libtool \
+				-o -name ar-lib -o -name test-driver -o -name ylwrap \
+				-o -name move-if-change -o -name mkinstalldirs \
+			\) -print0 2>/dev/null \
+			| xargs -0 -r grep -Zl $'\r$' 2>/dev/null \
+			| xargs -0 -r sed -i 's/\r$//'
+	}
+
+	for d in gmp mpfr mpc isl zstd libexpat libiconv ncurses gnu-devtools-for-arm; do
+		strip_cr_in_dir "$ROOT/src/$d"
+	done
+}
+fix_script_newlines
+
+if [[ $ROOT == /mnt/* ]]; then
+	echo "warning: repository is on a Windows mount ($ROOT)." >&2
+	echo "         Toolchain builds are slow and fragile here; prefer a copy under \$HOME." >&2
+fi
+
+# GDB (and other C++ host tools) need MinGW with POSIX threads. Ubuntu's
+# default alternative is often *-win32, which fails with:
+#   error: '__gthread_cond_t' does not name a type
+# Prefer *-posix compilers via a PATH overlay (no root / update-alternatives).
+prefer_mingw_posix_compilers() {
+	local gcc_posix gxx_posix overlay tool dst
+	gcc_posix="$(command -v "${MINGW_HOST}-gcc-posix" 2>/dev/null || true)"
+	gxx_posix="$(command -v "${MINGW_HOST}-g++-posix" 2>/dev/null || true)"
+	if [[ -z $gcc_posix || -z $gxx_posix ]]; then
+		echo "error: ${MINGW_HOST}-gcc-posix / ${MINGW_HOST}-g++-posix not found." >&2
+		echo "       Install mingw-w64 POSIX variants (e.g. g++-mingw-w64-x86-64)." >&2
+		exit 1
+	fi
+
+	overlay="$(mktemp -d "${TMPDIR:-/tmp}/mingw-posix-path.XXXXXX")"
+	# shellcheck disable=SC2064
+	trap "rm -rf '$overlay'" EXIT
+
+	for tool in gcc g++ c++ cpp; do
+		dst="$(command -v "${MINGW_HOST}-${tool}-posix" 2>/dev/null || true)"
+		[[ -n $dst ]] || continue
+		ln -sf "$dst" "$overlay/${MINGW_HOST}-${tool}"
+	done
+	# Keep matching binutils from the system PATH behind the overlay.
+	export PATH="$overlay:$PATH"
+
+	echo "MinGW host compilers: POSIX threads"
+	echo "  CC=$(command -v "${MINGW_HOST}-gcc") ($(${MINGW_HOST}-gcc -v 2>&1 | awk '/Thread model/{print; exit}'))"
+	echo "  CXX=$(command -v "${MINGW_HOST}-g++") ($(${MINGW_HOST}-g++ -v 2>&1 | awk '/Thread model/{print; exit}'))"
+	if ! ${MINGW_HOST}-g++ -v 2>&1 | grep -q 'Thread model: posix'; then
+		echo "error: ${MINGW_HOST}-g++ is not using Thread model: posix" >&2
+		exit 1
+	fi
+}
+
+if [[ $do_windows -eq 1 ]]; then
+	if ! command -v "${MINGW_HOST}-gcc" >/dev/null 2>&1 \
+		&& ! command -v "${MINGW_HOST}-gcc-posix" >/dev/null 2>&1; then
+		echo "error: ${MINGW_HOST}-gcc not found in PATH (install mingw-w64)" >&2
+		exit 1
+	fi
+	if ! command -v "${MINGW_HOST}-gcc-posix" >/dev/null 2>&1 \
+		|| ! command -v "${MINGW_HOST}-g++-posix" >/dev/null 2>&1; then
+		echo "error: ${MINGW_HOST}-gcc-posix / ${MINGW_HOST}-g++-posix not found." >&2
+		echo "       Install mingw-w64 POSIX variants (e.g. g++-mingw-w64-x86-64)." >&2
+		exit 1
+	fi
+fi
+
+# Common top-level flags for arm-none-eabi (A- and RM-profile multilibs)
+common_top=(--target="$TARGET" --aprofile --rmprofile "${debug_flags[@]}")
+
+# Lower-level flags after "--" (release packaging etc.)
+if [[ $quick -eq 1 ]]; then
+	# README "quick iteration" style: one multilib, much faster under WSL
+	common_top=(--target="$TARGET" --with-arch=armv8.1-m.main+mve.fp+fp.dp --disable-multilib "${debug_flags[@]}")
+	linux_bottom=(--config-flags-gcc=--with-float=hard)
+	mingw_bottom=(--config-flags-gcc=--with-float=hard)
+	newlib_bottom=(--config-flags-gcc=--with-float=hard)
+else
+	# README release-mode invocation for x86_64 Linux host / arm-none-eabi
+	linux_bottom=(--release --package --enable-newlib-nano --enable-gdb-with-python=yes)
+	# Windows hosts: no gdb-with-python (portability note in README)
+	mingw_bottom=(--release --package --enable-newlib-nano)
+	newlib_bottom=(--enable-newlib-nano --config-flags-gcc=--with-multilib-list=aprofile,rmprofile)
+fi
+
+# Arm's zstd stage builds inside src/zstd/lib (not per-host obj/). Linux and
+# MinGW then share archives; mingw-ar cannot update a GNU/Linux or truncated
+# archive ("malformed archive").
+clean_intree_zstd() {
+	local lib="$ROOT/src/zstd/lib"
+	[[ -d $lib ]] || return 0
+	echo "Cleaning in-tree zstd artifacts in $lib"
+	make -C "$lib" clean >/dev/null 2>&1 || true
+	rm -rf "$lib/obj"
+	rm -f "$lib"/libzstd.a "$lib"/libzstd.dll "$lib"/libzstd.so "$lib"/libzstd.so.* \
+		"$lib"/libzstd.dylib "$lib"/dll/libzstd.dll
+}
+
+build_linux() {
+	echo "=== Building Linux x64 host toolchain ($TARGET) ==="
+	echo "Build dir: $LINUX_BUILDDIR"
+	clean_intree_zstd
+	bash "$BUILD_WRAPPER" \
+		"${common_top[@]}" \
+		-- \
+		--builddir="$LINUX_BUILDDIR" \
+		"${linux_bottom[@]}" \
+		"$stage"
+	echo "Linux toolchain installed at: $LINUX_BUILDDIR/install"
+}
+
+build_windows() {
+	local host_tools="$LINUX_BUILDDIR/install/bin"
+	if [[ ! -d $host_tools ]]; then
+		echo "error: Linux toolchain not found at $host_tools" >&2
+		echo "       Build the Linux host first (./build.sh --linux-only) or run without --windows-only." >&2
+		exit 1
+	fi
+
+	mkdir -p "$MINGW_BUILDDIR"
+	prefer_mingw_posix_compilers
+	# zstd is compiled in-tree under src/zstd/lib. A leftover Linux (or
+	# interrupted MinGW) libzstd.a makes x86_64-w64-mingw32-ar fail with
+	# "malformed archive". Always start that tree clean for this host.
+	clean_intree_zstd
+
+	# When cross-compiling host tools to MinGW, GMP's configure often picks
+	# x86_64-w64-mingw32-gcc as CC_FOR_BUILD (especially under WSL2 / wine-binfmt)
+	# and then fails with: "Cannot determine executable suffix".
+	# Force a native build triple and build compiler for host-tool configures.
+	local build_triple
+	build_triple="$(gcc -dumpmachine)"
+	export CC_FOR_BUILD="${CC_FOR_BUILD:-gcc}"
+	export CXX_FOR_BUILD="${CXX_FOR_BUILD:-g++}"
+	export CPP_FOR_BUILD="${CPP_FOR_BUILD:-$CC_FOR_BUILD -E}"
+	echo "MinGW cross host=$MINGW_HOST build=$build_triple CC_FOR_BUILD=$CC_FOR_BUILD"
+
+	echo "=== Building Windows x64 (MinGW) host toolchain ($TARGET) ==="
+	echo "Build dir: $MINGW_BUILDDIR"
+	echo "Host toolchain: $host_tools"
+	bash "$BUILD_WRAPPER" \
+		"${common_top[@]}" \
+		-- \
+		--builddir="$MINGW_BUILDDIR" \
+		"${mingw_bottom[@]}" \
+		--config-flags-host-tools=--build="${build_triple}" \
+		--host="$MINGW_HOST" \
+		--host-toolchain-path="$host_tools" \
+		"$stage"
+
+	echo "=== Building Newlib for MinGW toolchain ==="
+	bash "$NEWLIB_MINGW" \
+		--target="$TARGET" \
+		--builddir="$MINGW_BUILDDIR" \
+		-- \
+		"${newlib_bottom[@]}"
+
+	echo "Windows toolchain installed at: $MINGW_BUILDDIR/install"
+}
+
+echo "Repository root: $ROOT"
+echo "Target: $TARGET"
+[[ $quick -eq 1 ]] && echo "Mode: quick (single multilib)"
+[[ $quick -eq 0 ]] && echo "Mode: release (aprofile + rmprofile)"
+
+if [[ $do_linux -eq 1 ]]; then
+	build_linux
+fi
+
+if [[ $do_windows -eq 1 ]]; then
+	build_windows
+fi
+
+echo "=== Done ==="
+if [[ $do_linux -eq 1 ]]; then
+	echo "Linux x64:   $LINUX_BUILDDIR/install/bin/${TARGET}-gcc"
+fi
+if [[ $do_windows -eq 1 ]]; then
+	echo "Windows x64: $MINGW_BUILDDIR/install/bin/${TARGET}-gcc.exe"
+fi
+if [[ $enable_log -eq 1 ]]; then
+	echo "Full log:    $LOGFILE"
+fi

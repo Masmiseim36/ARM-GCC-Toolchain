@@ -9,3 +9,7 @@
 *_lto.txt
 *.o
 *_PP.s
+
+# Toolchain build outputs (repo root only)
+/build-*/
+/build.log
