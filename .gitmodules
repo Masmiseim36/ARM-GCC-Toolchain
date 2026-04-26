@@ -1,0 +1,3 @@
+[submodule "src/gnu-devtools-for-arm"]
+	path = src/gnu-devtools-for-arm
+	url = https://git.gitlab.arm.com/tooling/gnu-devtools-for-arm.git

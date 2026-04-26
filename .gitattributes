@@ -1,6 +1,32 @@
-# Force Unix (LF) line endings on checkout/commit for shell scripts.
+# Force Unix (LF) line endings on checkout/commit.
 # Works regardless of core.autocrlf on Windows/WSL.
-*.sh     text eol=lf
-*.bash   text eol=lf
-*.bashrc text eol=lf
+
+# Shell scripts
+*.sh      text eol=lf
+*.bash    text eol=lf
+*.bashrc  text eol=lf
 *.profile text eol=lf
+
+# Autoconf / Automake / Libtool helpers (often executed without a .sh suffix)
+configure    text eol=lf
+config.guess text eol=lf
+config.sub   text eol=lf
+install-sh   text eol=lf
+missing      text eol=lf
+compile      text eol=lf
+depcomp      text eol=lf
+ltmain.sh    text eol=lf
+libtool      text eol=lf
+ar-lib       text eol=lf
+test-driver  text eol=lf
+ylwrap       text eol=lf
+move-if-change text eol=lf
+mkinstalldirs  text eol=lf
+
+# Autoconf / Automake / M4 inputs that configure parses
+*.m4  text eol=lf
+*.ac  text eol=lf
+*.am  text eol=lf
+*.in  text eol=lf
+*.sub text eol=lf
+*.guess text eol=lf
