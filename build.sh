@@ -21,6 +21,7 @@ NEWLIB_MINGW="$DEVTOOLS/build-newlib-for-mingw-toolchain.sh"
 LINUX_BUILDDIR="$ROOT/build-arm-none-eabi"
 MINGW_BUILDDIR="$ROOT/build-mingw-arm-none-eabi"
 MINGW_HOST="x86_64-w64-mingw32"
+LOGFILE="$ROOT/build.log"
 
 do_linux=1
 do_windows=1
@@ -35,6 +36,9 @@ Usage: $(basename "$0") [OPTIONS] [STAGE]
 Build $TARGET binaries for:
   - Linux x64 host  -> $LINUX_BUILDDIR
   - Windows x64 host (MinGW) -> $MINGW_BUILDDIR
+
+All console output (this script and every invoked tool) is written to:
+  $LOGFILE
 
 Options:
   --linux-only       Build only the Linux-hosted toolchain
@@ -54,6 +58,13 @@ Examples:
   ./build.sh --quick --linux-only
   ./build.sh --windows-only
 EOF
+}
+
+# Mirror stdout/stderr to the console and to build.log for this process and children.
+setup_logging() {
+	: > "$LOGFILE"
+	exec > >(tee -a "$LOGFILE") 2>&1
+	echo "Logging to $LOGFILE (started $(date -Is))"
 }
 
 while [[ $# -gt 0 ]]; do
@@ -98,6 +109,8 @@ if [[ $# -gt 0 ]]; then
 	echo "error: unexpected arguments: $*" >&2
 	exit 1
 fi
+
+setup_logging
 
 require_file() {
 	if [[ ! -x $1 && ! -f $1 ]]; then
@@ -265,3 +278,4 @@ fi
 if [[ $do_windows -eq 1 ]]; then
 	echo "Windows x64: $MINGW_BUILDDIR/install/bin/${TARGET}-gcc.exe"
 fi
+echo "Full log:    $LOGFILE"
