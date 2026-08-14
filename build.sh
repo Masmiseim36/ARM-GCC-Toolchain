@@ -184,6 +184,10 @@ fix_script_newlines() {
 }
 fix_script_newlines
 
+# shellcheck source=ensure-executables.sh
+source "$ROOT/ensure-executables.sh"
+ensure_build_executables "$ROOT"
+
 if [[ $ROOT == /mnt/* ]]; then
 	echo "warning: repository is on a Windows mount ($ROOT)." >&2
 	echo "         Toolchain builds are slow and fragile here; prefer a copy under \$HOME." >&2
