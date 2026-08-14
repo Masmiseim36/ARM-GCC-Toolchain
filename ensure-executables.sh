@@ -6,6 +6,7 @@
 # - gnu-devtools-for-arm drivers (build-*.sh, python-config.sh)
 # - autoconf/libtool helpers run by configure/make (configure, install-sh, …)
 # - shebang helpers in host libraries (e.g. gmp/mpn/m4-ccas, mpfr tools)
+# - libexpat conftools/get-version.sh (required by autoreconf during the GDB stage)
 
 ensure_build_executables() {
 	local root="${1:?root directory required}"
@@ -97,9 +98,22 @@ ensure_build_executables() {
 			-o -name install-sh -o -name missing -o -name compile \
 			-o -name depcomp -o -name ltmain.sh -o -name libtool \
 			-o -name ar-lib -o -name test-driver -o -name ylwrap \
-			-o -name move-if-change -o -name mkinstalldirs -o -name 'm4-*'
+			-o -name move-if-change -o -name mkinstalldirs -o -name 'm4-*' \
+			-o -name 'get-version.sh'
 		chmod_shebangs "$src/$d"
 	done
+
+	# libexpat: autoreconf/aclocal runs conftools/get-version.sh for AC_INIT;
+	# without +x this fails with "Permission denied" and breaks the GDB stage.
+	chmod_paths "$src/libexpat/expat/conftools/get-version.sh"
+	if [[ -d $src/libexpat ]]; then
+		while IFS= read -r -d '' conftools; do
+			chmod_find "$conftools" \
+				-name '*.sh' -o -name 'config.*' -o -name '*.guess' -o -name '*.sub' \
+				-o -name install-sh -o -name missing -o -name compile
+			chmod_shebangs "$conftools"
+		done < <(find "$src/libexpat" -type d -name conftools -print0 2>/dev/null)
+	fi
 
 	# Large trees: only well-known autoconf/make helpers and *.sh (not every source file)
 	for d in binutils-gdb binutils-gdb--gdb gcc newlib-cygwin glibc linux qemu; do
