@@ -26,6 +26,7 @@ LOGFILE="$ROOT/build.log"
 do_linux=1
 do_windows=1
 quick=0
+enable_log=1
 debug_flags=()
 stage="start"
 
@@ -37,8 +38,8 @@ Build $TARGET binaries for:
   - Linux x64 host  -> $LINUX_BUILDDIR
   - Windows x64 host (MinGW) -> $MINGW_BUILDDIR
 
-All console output (this script and every invoked tool) is written to:
-  $LOGFILE
+By default all console output (this script and every invoked tool) is also
+written to: $LOGFILE
 
 Options:
   --linux-only       Build only the Linux-hosted toolchain
@@ -46,6 +47,7 @@ Options:
                      (requires a completed Linux build under $LINUX_BUILDDIR)
   --quick            Faster smoke build: single multilib, no full release set
   --debug            Pass --debug --debug-target to the toolchain scripts
+  --no-log           Do not write output to $LOGFILE (console only)
   -h, --help         Show this help
 
 STAGE defaults to "start" (full rebuild from the beginning).
@@ -57,6 +59,7 @@ Examples:
   ./build.sh --linux-only
   ./build.sh --quick --linux-only
   ./build.sh --windows-only
+  ./build.sh --no-log --windows-only
 EOF
 }
 
@@ -82,6 +85,9 @@ while [[ $# -gt 0 ]]; do
 			;;
 		--debug)
 			debug_flags=(--debug --debug-target)
+			;;
+		--no-log)
+			enable_log=0
 			;;
 		-h|--help)
 			usage
@@ -110,8 +116,11 @@ if [[ $# -gt 0 ]]; then
 	exit 1
 fi
 
-setup_logging
-
+if [[ $enable_log -eq 1 ]]; then
+	setup_logging
+else
+	echo "Logging to $LOGFILE disabled (--no-log)"
+fi
 require_file() {
 	if [[ ! -x $1 && ! -f $1 ]]; then
 		echo "error: missing required file: $1" >&2
@@ -240,6 +249,17 @@ build_windows() {
 
 	mkdir -p "$MINGW_BUILDDIR"
 
+	# When cross-compiling host tools to MinGW, GMP's configure often picks
+	# x86_64-w64-mingw32-gcc as CC_FOR_BUILD (especially under WSL2 / wine-binfmt)
+	# and then fails with: "Cannot determine executable suffix".
+	# Force a native build triple and build compiler for host-tool configures.
+	local build_triple
+	build_triple="$(gcc -dumpmachine)"
+	export CC_FOR_BUILD="${CC_FOR_BUILD:-gcc}"
+	export CXX_FOR_BUILD="${CXX_FOR_BUILD:-g++}"
+	export CPP_FOR_BUILD="${CPP_FOR_BUILD:-$CC_FOR_BUILD -E}"
+	echo "MinGW cross host=$MINGW_HOST build=$build_triple CC_FOR_BUILD=$CC_FOR_BUILD"
+
 	echo "=== Building Windows x64 (MinGW) host toolchain ($TARGET) ==="
 	echo "Build dir: $MINGW_BUILDDIR"
 	echo "Host toolchain: $host_tools"
@@ -248,6 +268,7 @@ build_windows() {
 		-- \
 		--builddir="$MINGW_BUILDDIR" \
 		"${mingw_bottom[@]}" \
+		--config-flags-host-tools=--build="${build_triple}" \
 		--host="$MINGW_HOST" \
 		--host-toolchain-path="$host_tools" \
 		"$stage"
@@ -282,4 +303,6 @@ fi
 if [[ $do_windows -eq 1 ]]; then
 	echo "Windows x64: $MINGW_BUILDDIR/install/bin/${TARGET}-gcc.exe"
 fi
-echo "Full log:    $LOGFILE"
+if [[ $enable_log -eq 1 ]]; then
+	echo "Full log:    $LOGFILE"
+fi
