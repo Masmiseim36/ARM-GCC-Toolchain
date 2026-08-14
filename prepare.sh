@@ -240,32 +240,10 @@ fi
 #	echo "No WSL - nothing to do"
 #fi
 
-
-cd src
-	cd gmp
-	chmod +x -R ./
-	cd ..
-
-	cd mpc
-	chmod +x -R ./
-	cd ..
-
-	cd isl
-	chmod +x -R ./
-	cd ..
-
-	cd mpfr
-	chmod +x -R ./
-	cd ..
-
-	cd gcc
-	chmod +x -R ./
-	cd ..
-
-	cd gnu-devtools-for-arm
-	chmod +x -R ./
-	cd ..
-cd ..
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=ensure-executables.sh
+source "$SCRIPT_DIR/ensure-executables.sh"
+ensure_build_executables "$SCRIPT_DIR"
 
 echo "Setup done"
 
