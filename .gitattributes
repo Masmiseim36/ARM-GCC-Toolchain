@@ -1,0 +1,6 @@
+# Force Unix (LF) line endings on checkout/commit for shell scripts.
+# Works regardless of core.autocrlf on Windows/WSL.
+*.sh     text eol=lf
+*.bash   text eol=lf
+*.bashrc text eol=lf
+*.profile text eol=lf

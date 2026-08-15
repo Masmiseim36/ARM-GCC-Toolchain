@@ -1,0 +1,11 @@
+*.asm
+*.d
+*Debug.elf
+*.hzq
+*.hzs
+*.ind
+*.map
+*.ld
+*_lto.txt
+*.o
+*_PP.s
