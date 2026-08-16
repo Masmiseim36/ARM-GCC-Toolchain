@@ -14,24 +14,36 @@ This repository takes a different approach:
 | --- | --- |
 | Frozen copies of upstream projects | **Git submodules** pointing at the original repositories |
 | Fixed release combination | Free choice of revisions/tags |
-| Hard to customize | GCC and Binutils as **forks** when extensions are needed |
+| Hard to customize | GCC, Binutils, and MPFR as **forks/mirrors** when needed |
 
 Build orchestration still comes from Arm (`src/gnu-devtools-for-arm`). Components under `src/` are laid out as the Arm scripts expect (`./src/...` relative to the working directory).
 
 ### Submodules and forks
 
-- **Upstream via submodule** (among others): Newlib, Glibc, Linux, QEMU, the GDB tree (`binutils-gdb--gdb`), `gnu-devtools-for-arm`
-- **Forks** (for local changes):
-  - [`src/gcc`](https://github.com/Masmiseim36/gcc.git)
-  - [`src/binutils-gdb`](https://github.com/Masmiseim36/binutils-gdb.git)
+Most toolchain components are Git submodules under `src/` (see [`.gitmodules`](.gitmodules)):
 
-Host libraries such as GMP, MPFR, MPC, ISL, Zstd, and similar also live under `src/` and are discovered by the Arm scripts during the build.
+| Path | Role |
+| --- | --- |
+| `src/gnu-devtools-for-arm` | Arm build / test scripts |
+| `src/gcc` | **Fork** — local GCC changes ([Masmiseim36/gcc](https://github.com/Masmiseim36/gcc.git)) |
+| `src/binutils-gdb` | **Fork** — local Binutils changes ([Masmiseim36/binutils-gdb](https://github.com/Masmiseim36/binutils-gdb.git)) |
+| `src/binutils-gdb--gdb` | Upstream GDB tree (Sourceware) |
+| `src/newlib-cygwin` | Newlib |
+| `src/glibc` | Glibc (Linux targets) |
+| `src/linux` | Linux kernel headers |
+| `src/qemu` | QEMU (optional testing) |
+| `src/isl` | ISL |
+| `src/mpfr` | **Fork** of MPFR ([Masmiseim36/mpfr](https://github.com/Masmiseim36/mpfr.git)) — mirror used because the upstream server had severe performance / reliability problems |
+| `src/libexpat` | Expat (GDB) |
+| `src/zstd` | Zstd |
+
+Additional host libraries expected by the Arm scripts (for example GMP, MPC, libiconv) also live under `src/` when present; they are discovered during the build.
 
 ## Prerequisites
 
 - A Linux host or **WSL2** (Ubuntu recommended; Manjaro is supported by `prepare.sh`)
 - Prefer building on a **native Linux filesystem** (not under `/mnt/c/...` — builds there are slow and fragile due to CRLF/`PATH` issues)
-- For Windows-hosted toolchains: MinGW (`x86_64-w64-mingw32-gcc`)
+- For Windows-hosted toolchains: MinGW-w64 with the **POSIX** thread model (`x86_64-w64-mingw32-gcc-posix` / `g++-posix`). `build.sh` selects these automatically; the default Ubuntu `*-win32` alternatives break the MinGW GDB build.
 
 ## Quick start
 
@@ -75,7 +87,7 @@ Sets up the build environment:
 Builds the **arm-none-eabi** toolchain following the Arm instructions in `src/gnu-devtools-for-arm/README.md`:
 
 1. **Linux x64** host → output under `build-arm-none-eabi/`
-2. **Windows x64** (MinGW `x86_64-w64-mingw32`) → `build-mingw-arm-none-eabi/`  
+2. **Windows x64** (MinGW `x86_64-w64-mingw32`, POSIX threads) → `build-mingw-arm-none-eabi/`  
    (requires a successful Linux build; includes Newlib integration)
 
 All console output (this script and every invoked tool) is also written to **`build.log`**.
@@ -122,15 +134,16 @@ Details, supported targets, and testing: [`src/gnu-devtools-for-arm/README.md`](
 ├── build-arm-none-eabi/      # Linux-hosted toolchain
 ├── build-mingw-arm-none-eabi/
 └── src/
-    ├── gnu-devtools-for-arm/
-    ├── gcc/
-    ├── binutils-gdb/
-    ├── binutils-gdb--gdb/
-    ├── newlib-cygwin/
-    ├── glibc/
-    ├── linux/
-    ├── gmp/ mpfr/ mpc/ isl/ zstd/ …
-    └── qemu/                 # optional, for QEMU-based testing
+    ├── gnu-devtools-for-arm/   # submodule
+    ├── gcc/                    # fork (submodule)
+    ├── binutils-gdb/           # fork (submodule)
+    ├── binutils-gdb--gdb/      # submodule
+    ├── newlib-cygwin/          # submodule
+    ├── glibc/                  # submodule
+    ├── linux/                  # submodule
+    ├── qemu/                   # submodule (optional testing)
+    ├── isl/ mpfr/ libexpat/ zstd/   # submodules (mpfr = fork/mirror)
+    └── gmp/ mpc/ …             # other host libs as needed
 ```
 
 ## Line endings (Windows / WSL)

@@ -202,9 +202,51 @@ if [[ $ROOT == /mnt/* ]]; then
 	echo "         Toolchain builds are slow and fragile here; prefer a copy under \$HOME." >&2
 fi
 
+# GDB (and other C++ host tools) need MinGW with POSIX threads. Ubuntu's
+# default alternative is often *-win32, which fails with:
+#   error: '__gthread_cond_t' does not name a type
+# Prefer *-posix compilers via a PATH overlay (no root / update-alternatives).
+prefer_mingw_posix_compilers() {
+	local gcc_posix gxx_posix overlay tool dst
+	gcc_posix="$(command -v "${MINGW_HOST}-gcc-posix" 2>/dev/null || true)"
+	gxx_posix="$(command -v "${MINGW_HOST}-g++-posix" 2>/dev/null || true)"
+	if [[ -z $gcc_posix || -z $gxx_posix ]]; then
+		echo "error: ${MINGW_HOST}-gcc-posix / ${MINGW_HOST}-g++-posix not found." >&2
+		echo "       Install mingw-w64 POSIX variants (e.g. g++-mingw-w64-x86-64)." >&2
+		exit 1
+	fi
+
+	overlay="$(mktemp -d "${TMPDIR:-/tmp}/mingw-posix-path.XXXXXX")"
+	# shellcheck disable=SC2064
+	trap "rm -rf '$overlay'" EXIT
+
+	for tool in gcc g++ c++ cpp; do
+		dst="$(command -v "${MINGW_HOST}-${tool}-posix" 2>/dev/null || true)"
+		[[ -n $dst ]] || continue
+		ln -sf "$dst" "$overlay/${MINGW_HOST}-${tool}"
+	done
+	# Keep matching binutils from the system PATH behind the overlay.
+	export PATH="$overlay:$PATH"
+
+	echo "MinGW host compilers: POSIX threads"
+	echo "  CC=$(command -v "${MINGW_HOST}-gcc") ($(${MINGW_HOST}-gcc -v 2>&1 | awk '/Thread model/{print; exit}'))"
+	echo "  CXX=$(command -v "${MINGW_HOST}-g++") ($(${MINGW_HOST}-g++ -v 2>&1 | awk '/Thread model/{print; exit}'))"
+	if ! ${MINGW_HOST}-g++ -v 2>&1 | grep -q 'Thread model: posix'; then
+		echo "error: ${MINGW_HOST}-g++ is not using Thread model: posix" >&2
+		exit 1
+	fi
+}
+
 if [[ $do_windows -eq 1 ]]; then
-	if ! command -v "${MINGW_HOST}-gcc" >/dev/null 2>&1; then
+	if ! command -v "${MINGW_HOST}-gcc" >/dev/null 2>&1 \
+		&& ! command -v "${MINGW_HOST}-gcc-posix" >/dev/null 2>&1; then
 		echo "error: ${MINGW_HOST}-gcc not found in PATH (install mingw-w64)" >&2
+		exit 1
+	fi
+	if ! command -v "${MINGW_HOST}-gcc-posix" >/dev/null 2>&1 \
+		|| ! command -v "${MINGW_HOST}-g++-posix" >/dev/null 2>&1; then
+		echo "error: ${MINGW_HOST}-gcc-posix / ${MINGW_HOST}-g++-posix not found." >&2
+		echo "       Install mingw-w64 POSIX variants (e.g. g++-mingw-w64-x86-64)." >&2
 		exit 1
 	fi
 fi
@@ -248,6 +290,7 @@ build_windows() {
 	fi
 
 	mkdir -p "$MINGW_BUILDDIR"
+	prefer_mingw_posix_compilers
 
 	# When cross-compiling host tools to MinGW, GMP's configure often picks
 	# x86_64-w64-mingw32-gcc as CC_FOR_BUILD (especially under WSL2 / wine-binfmt)
