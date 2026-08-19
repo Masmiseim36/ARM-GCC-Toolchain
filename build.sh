@@ -253,9 +253,23 @@ else
 	newlib_bottom=(--enable-newlib-nano --config-flags-gcc=--with-multilib-list=aprofile,rmprofile)
 fi
 
+# Arm's zstd stage builds inside src/zstd/lib (not per-host obj/). Linux and
+# MinGW then share archives; mingw-ar cannot update a GNU/Linux or truncated
+# archive ("malformed archive").
+clean_intree_zstd() {
+	local lib="$ROOT/src/zstd/lib"
+	[[ -d $lib ]] || return 0
+	echo "Cleaning in-tree zstd artifacts in $lib"
+	make -C "$lib" clean >/dev/null 2>&1 || true
+	rm -rf "$lib/obj"
+	rm -f "$lib"/libzstd.a "$lib"/libzstd.dll "$lib"/libzstd.so "$lib"/libzstd.so.* \
+		"$lib"/libzstd.dylib "$lib"/dll/libzstd.dll
+}
+
 build_linux() {
 	echo "=== Building Linux x64 host toolchain ($TARGET) ==="
 	echo "Build dir: $LINUX_BUILDDIR"
+	clean_intree_zstd
 	bash "$BUILD_WRAPPER" \
 		"${common_top[@]}" \
 		-- \
@@ -275,6 +289,10 @@ build_windows() {
 
 	mkdir -p "$MINGW_BUILDDIR"
 	prefer_mingw_posix_compilers
+	# zstd is compiled in-tree under src/zstd/lib. A leftover Linux (or
+	# interrupted MinGW) libzstd.a makes x86_64-w64-mingw32-ar fail with
+	# "malformed archive". Always start that tree clean for this host.
+	clean_intree_zstd
 
 	# When cross-compiling host tools to MinGW, GMP's configure often picks
 	# x86_64-w64-mingw32-gcc as CC_FOR_BUILD (especially under WSL2 / wine-binfmt)
