@@ -240,11 +240,6 @@ fi
 #	echo "No WSL - nothing to do"
 #fi
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=ensure-executables.sh
-source "$SCRIPT_DIR/ensure-executables.sh"
-ensure_build_executables "$SCRIPT_DIR"
-
 echo "Setup done"
 
 #mkdir -p build-mingw-aarch64-none-elf

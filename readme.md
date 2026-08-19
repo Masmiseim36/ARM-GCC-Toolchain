@@ -76,7 +76,7 @@ sudo ln -s /usr/bin/automake-1.16 /usr/bin/automake-1.14
 Sets up the build environment:
 
 1. Installs required packages (Ubuntu via `apt`, Manjaro via `pacman`, optional AUR packages via `yay`/`paru`)
-2. Calls `ensure-executables.sh` so only build-relevant scripts get the executable bit (no blanket `chmod -R` over entire source trees)
+2. Does **not** chmod the source trees: executable bits are stored in git (`100755`)
 
 ```bash
 ./prepare.sh
@@ -105,7 +105,7 @@ An optional final argument selects an Arm build stage (default: `start`).
 
 ### `ensure-executables.sh`
 
-Shared helper used by `prepare.sh` and `build.sh`. Marks build scripts and Autoconf/Make helpers executable (for example `build-*.sh`, `configure`, `install-sh`, shebang helpers under GMP/MPFR/…). Can also be used on its own:
+Optional helper if a checkout lost executable bits (for example `core.filemode=false` on Windows). The normal path is to keep `100755` in git and skip this script. To repair a tree:
 
 ```bash
 source ./ensure-executables.sh

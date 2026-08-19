@@ -146,56 +146,40 @@ require_dir "$ROOT/src/mpc"
 require_dir "$ROOT/src/isl"
 require_dir "$ROOT/src/zstd"
 
-# Sources checked out on Windows often have CRLF; strip so WSL/configure can run.
-# Prefer building on a native Linux filesystem (~/...) for speed and reliability.
+# Sources checked out on a Windows mount often have CRLF; strip so configure can run.
+# Skip on a native Linux filesystem (e.g. WSL $HOME): walking gcc/newlib with sed -i
+# stalls the build and dirties submodules. Executable bits are expected from git
+# (100755); do not call ensure-executables.sh here.
 fix_script_newlines() {
 	local d
-	echo "Normalizing text file line endings for WSL..."
+	if [[ $ROOT != /mnt/* ]]; then
+		return 0
+	fi
+	echo "Normalizing CRLF on Windows mount (host libraries + Arm wrappers only)..."
 
-	# Host libraries: configure/m4 parse many text files (CRLF breaks GMP etc.)
-	for d in gmp mpfr mpc isl zstd libexpat libiconv; do
-		[[ -d $ROOT/src/$d ]] || continue
-		find "$ROOT/src/$d" \( -path '*/.git/*' -o -path '*/.git' \) -prune -o \
+	strip_cr_in_dir() {
+		local dir="$1"
+		[[ -d $dir ]] || return 0
+		find "$dir" \( -path '*/.git/*' -o -path '*/.git' \
+				-o -path '*/testsuite/*' -o -path '*/tests/*' \) -prune -o \
 			-type f \( \
 				-name '*.sh' -o -name '*.sub' -o -name '*.guess' \
-				-o -name '*.c' -o -name '*.h' -o -name '*.cc' -o -name '*.cpp' \
-				-o -name '*.S' -o -name '*.s' -o -name '*.asm' -o -name '*.m4' \
-				-o -name '*.ac' -o -name '*.am' -o -name '*.in' -o -name '*.txt' \
-				-o -name '*.def' -o -name Makefile -o -name makefile \
+				-o -name '*.m4' -o -name '*.ac' -o -name '*.am' -o -name '*.in' \
 				-o -name configure -o -name 'config.*' -o -name 'm4-*' \
 				-o -name install-sh -o -name missing -o -name compile \
 				-o -name depcomp -o -name ltmain.sh -o -name libtool \
 				-o -name ar-lib -o -name test-driver -o -name ylwrap \
 				-o -name move-if-change -o -name mkinstalldirs \
 			\) -print0 2>/dev/null \
+			| xargs -0 -r grep -Zl $'\r$' 2>/dev/null \
 			| xargs -0 -r sed -i 's/\r$//'
-		# Catch remaining shebang helpers (e.g. m4-ccas) without known extensions
-		find "$ROOT/src/$d" \( -path '*/.git/*' -o -path '*/.git' \) -prune -o \
-			-type f -print0 2>/dev/null \
-			| xargs -0 -r grep -Zl '^#!' 2>/dev/null \
-			| xargs -0 -r sed -i 's/\r$//'
-	done
+	}
 
-	# Large trees: only shell/autoconf helpers (C sources are fine with CRLF for gcc)
-	for d in gnu-devtools-for-arm binutils-gdb binutils-gdb--gdb gcc newlib-cygwin; do
-		[[ -d $ROOT/src/$d ]] || continue
-		find "$ROOT/src/$d" \( -path '*/.git/*' -o -path '*/.git' \) -prune -o \
-			-type f \( \
-				-name '*.sh' -o -name '*.sub' -o -name '*.guess' \
-				-o -name configure -o -name 'config.*' \
-				-o -name install-sh -o -name missing -o -name compile \
-				-o -name depcomp -o -name ltmain.sh -o -name libtool \
-				-o -name ar-lib -o -name test-driver -o -name ylwrap \
-				-o -name move-if-change -o -name mkinstalldirs \
-			\) -print0 2>/dev/null \
-			| xargs -0 -r sed -i 's/\r$//'
+	for d in gmp mpfr mpc isl zstd libexpat libiconv ncurses gnu-devtools-for-arm; do
+		strip_cr_in_dir "$ROOT/src/$d"
 	done
 }
 fix_script_newlines
-
-# shellcheck source=ensure-executables.sh
-source "$ROOT/ensure-executables.sh"
-ensure_build_executables "$ROOT"
 
 if [[ $ROOT == /mnt/* ]]; then
 	echo "warning: repository is on a Windows mount ($ROOT)." >&2
