@@ -55,10 +55,11 @@ cd ARM-GCC-Toolchain
 # If submodules are still missing:
 git submodule update --init --recursive
 
-# Install dependencies and mark build scripts executable
+# Install dependencies
 ./prepare.sh
 
 # Build arm-none-eabi for Linux x64 and Windows x64 (MinGW)
+# Prefer a copy under $HOME on WSL (not /mnt/c/...)
 ./build.sh
 ```
 
@@ -88,7 +89,14 @@ Builds the **arm-none-eabi** toolchain following the Arm instructions in `src/gn
 
 1. **Linux x64** host → output under `build-arm-none-eabi/`
 2. **Windows x64** (MinGW `x86_64-w64-mingw32`, POSIX threads) → `build-mingw-arm-none-eabi/`  
-   (requires a successful Linux build; includes Newlib integration)
+   (requires a successful Linux build under `build-arm-none-eabi/install`; includes Newlib integration)
+
+Behaviour worth knowing:
+
+- Under WSL, `PATH` is sanitized (no `/mnt/...` / Windows `git.exe`)
+- MinGW builds force the **POSIX** MinGW compilers via a temporary PATH overlay
+- Before Linux/MinGW host-tool stages, in-tree `src/zstd/lib` artifacts are cleaned (Arm builds zstd in-source; leftover Linux archives break `mingw-ar`)
+- CRLF rewriting runs **only** when the repo is on a Windows mount (`/mnt/...`); on a native Linux tree it is a no-op — prefer [`.gitattributes`](.gitattributes) for LF
 
 All console output (this script and every invoked tool) is also written to **`build.log`**.
 
@@ -105,7 +113,7 @@ An optional final argument selects an Arm build stage (default: `start`).
 
 ### `ensure-executables.sh`
 
-Optional helper if a checkout lost executable bits (for example `core.filemode=false` on Windows). The normal path is to keep `100755` in git and skip this script. To repair a tree:
+Optional repair tool if a checkout lost executable bits (for example `core.filemode=false` on Windows). **Not** invoked by `prepare.sh` or `build.sh` in the normal path — keep `100755` in git instead. To repair a tree:
 
 ```bash
 source ./ensure-executables.sh
@@ -146,10 +154,18 @@ Details, supported targets, and testing: [`src/gnu-devtools-for-arm/README.md`](
     └── gmp/ mpc/ …             # other host libs as needed
 ```
 
-## Line endings (Windows / WSL)
+## Line endings and executable bits (Windows / WSL)
 
-- `.gitattributes` forces **LF** for shell scripts on checkout
-- `build.sh` also normalizes critical CRLF files and, under WSL, sanitizes `PATH` (no Windows `git.exe`) so configure/make do not fail on `^M`
+- [`.gitattributes`](.gitattributes) forces **LF** on checkout for:
+  - shell scripts (`*.sh`, …)
+  - Autoconf/Automake/Libtool helpers without a `.sh` suffix (`configure`, `install-sh`, `config.guess`, `config.sub`, …)
+  - related inputs (`*.m4`, `*.ac`, `*.am`, `*.in`, …)
+- After changing `.gitattributes`, renormalize an existing tree if needed:  
+  `git add --renormalize .` (then commit), or re-clone
+- Executable bits for build helpers are stored in git as **`100755`**; avoid wholesale `chmod` of `src/`
+- `build.sh` still has an optional CRLF strip for `/mnt/...` checkouts only (safety net). Prefer building under `$HOME` in WSL so that path is unused
+
+Build outputs (`build-*/`, `build.log`) are listed in [`.gitignore`](.gitignore).
 
 ## Further links
 
